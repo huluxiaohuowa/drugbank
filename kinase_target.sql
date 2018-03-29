@@ -65,7 +65,7 @@ create table kinase_chemblid as (
 
 
 
-#join uniprot
+--join uniprot
 alter table kinase_chemblid drop column chembl_id;
 drop table if exists kinase_protein;
 create table kinase_protein as (
@@ -120,6 +120,20 @@ CREATE TABLE kinase_activity_500 AS (
       GROUP BY molregno, tid, standard_type
 
 );
+--65786
+
+use chembl;
+DROP TABLE IF EXISTS kinase_activity_10u;
+CREATE TABLE kinase_activity_10u AS (
+    select 
+    *
+      from kinase_activity_merged
+      where standard_value< 10000
+      GROUP BY molregno, tid, standard_type
+
+);
+--65786
+
 
 use chembl;
 DROP table if EXISTS kinase_activity_500_indication;
