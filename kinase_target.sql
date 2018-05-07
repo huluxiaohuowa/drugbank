@@ -30,6 +30,14 @@ create table target_assays as (
 );
 alter table target_assays add index (assay_id);
 
+DROP TABLE if exists target_assays;
+create table target_assays as (
+    select a.assay_id,kt.*
+    from assays as a
+    inner join target_cleaned as kt
+    on a.tid = kt.tid
+);
+
 
 DROP TABLE if exists assays_activities;
 create table assays_activities as (
@@ -53,6 +61,14 @@ create table compound_kinase as (
     on cs.molregno = a.molregno
 );
 alter table compound_kinase add index (target_chembl_id);
+
+DROP TABLE if exists compound_target;
+create table compound_kinasetarget as (
+    select cs.canonical_smiles, a.*
+    from compound_structures as cs
+    inner join assays_activities as a
+    on cs.molregno = a.molregno
+);
 
 DROP table if exists kinase_chemblid;
 create table kinase_chemblid as (
@@ -92,23 +108,72 @@ create table kinase_activity_cleaned as (
 SELECT count(*) from kinase_activity_cleaned;
 -- 121945
 
+DROP table if exists compound_target_cleaned;
+create table compound_target_cleaned as (
+    select
+    *
+    from compound_target
+      WHERE (published_relation = '=' or published_relation = '<')
+        AND standard_type IN ('IC50', 'EC50', 'Ki')
+        AND standard_units = 'nM'
+);
 
 
 
+-- #merge activities
 
-#merge activities
+DROP TABLE IF EXISTS compound_target_merged;
+CREATE TABLE compound_target_merged AS (
+    select 
+    molregno, tid,
+    avg(log(standard_value)) AS mu,
+    stddev(log(standard_value)) AS sigma
+      from compound_target_cleaned
+      where standard_value > 1
+      GROUP BY molregno, tid, standard_type
+);
+
+
 DROP TABLE IF EXISTS kinase_activity_merged;
 CREATE TABLE kinase_activity_merged AS (
     select 
-    *,
-    avg(log10(standard_value)) AS mu,
-    std(log10(standard_value)) AS sigma
-      from kinase_protein
+    molregno, tid,
+    avg(log(standard_value)) AS mu,
+    stddev(log(standard_value)) AS sigma
+      from kinase_activity_cleaned
+      where standard_value > 1
       GROUP BY molregno, tid, standard_type
 );
-# drop data points with high variance
-DELETE FROM kinase_activity_merged WHERE sigma>=1;
 
+DROP TABLE IF EXISTS compound_target_merged;
+CREATE TABLE compound_target_merged AS (
+    select 
+    molregno, tid,
+    avg(log(standard_value)) AS mu,
+    stddev(log(standard_value)) AS sigma
+      from compound_target_cleaned
+      where standard_value > 1
+      GROUP BY molregno, tid, standard_type
+);
+
+-- # drop data points with high variance
+DELETE FROM compound_target_merged WHERE sigma>=1;
+delete from compound_target_merged where mu > 10000;
+
+drop table if exists tid_type;
+create table tid_type as (
+    select tid, target_type
+     from compound_target_cleaned
+     group by tid, target_type
+);
+
+drop table if EXISTS compound_target_merged_type;
+CREATE table compound_target_merged_type as (
+    select tm.molregno
+      from compound_target_merged as tm
+      inner join tid_type as tt 
+      on tm.tid = tt.tid
+);
 
 use chembl;
 DROP TABLE IF EXISTS kinase_activity_500;
